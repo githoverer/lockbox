@@ -27,3 +27,26 @@ def is_process_running(executable: str) -> bool:
             return True
 
     return False
+
+
+def terminate_process(executable: str) -> bool:
+    target_name = Path(executable).name.lower()
+
+    terminated = False
+
+    for process in psutil.process_iter(["name"]):
+        try:
+            process_name = process.name()
+
+            if process_name.lower() == target_name:
+                process.terminate()
+                terminated = True
+
+        except (
+            psutil.NoSuchProcess,
+            psutil.AccessDenied,
+            psutil.ZombieProcess,
+        ):
+            continue
+
+    return terminated

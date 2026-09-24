@@ -2,6 +2,7 @@ from datetime import datetime, time
 
 from src.lockbox.policy import ApplicationPolicy, TimeWindow
 from src.lockbox.scheduler import (
+    get_next_transition,
     is_application_allowed,
     is_time_in_window,
 )
@@ -103,4 +104,62 @@ def test_overnight_window_continues_into_next_day():
     assert not is_application_allowed(
         policy,
         tuesday_03_00,
+    )
+
+
+def test_next_transition_normal_window():
+
+    policy = ApplicationPolicy(
+        name="Test App",
+        executable="test.exe",
+        allowed_windows={
+            "monday": [
+                TimeWindow(
+                    start=time(21, 0),
+                    end=time(23, 0),
+                )
+            ]
+        },
+    )
+
+    current = datetime(
+        2026, 9, 21, 18, 0
+    )
+
+    transition = get_next_transition(
+        policy,
+        current,
+    )
+
+    assert transition == datetime(
+        2026, 9, 21, 21, 0
+    )
+
+
+def test_next_transition_overnight_window():
+
+    policy = ApplicationPolicy(
+        name="Test App",
+        executable="test.exe",
+        allowed_windows={
+            "monday": [
+                TimeWindow(
+                    start=time(21, 0),
+                    end=time(2, 0),
+                )
+            ]
+        },
+    )
+
+    current = datetime(
+        2026, 9, 21, 22, 0
+    )
+
+    transition = get_next_transition(
+        policy,
+        current,
+    )
+
+    assert transition == datetime(
+        2026, 9, 22, 2, 0
     )
