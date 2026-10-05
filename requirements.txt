@@ -1,2 +1,5 @@
 psutil>=6.0
 pytest>=9.0
+psutil>=6.0
+pytest>=9.0
+pywin32>=306

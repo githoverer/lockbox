@@ -1,4 +1,4 @@
-import time as time_module
+import threading
 from datetime import datetime
 
 from .enforcement import get_enforcement_action
@@ -19,7 +19,9 @@ class LockboxEnforcer:
     ):
         self.policies = policies
         self.check_interval = check_interval
+
         self.running = False
+        self.stop_event = threading.Event()
 
     def enforce_once(self) -> None:
 
@@ -57,8 +59,6 @@ class LockboxEnforcer:
 
             if not allowed:
 
-                # During blocked periods, check frequently
-                # so newly launched applications are detected.
                 sleep_times.append(
                     self.check_interval
                 )
@@ -88,6 +88,7 @@ class LockboxEnforcer:
     def run(self) -> None:
 
         self.running = True
+        self.stop_event.clear()
 
         while self.running:
 
@@ -95,9 +96,14 @@ class LockboxEnforcer:
 
             sleep_time = self.get_sleep_time()
 
-            time_module.sleep(
-                sleep_time,
+            # Wait until either:
+            # 1. the sleep period expires, or
+            # 2. stop() is called.
+            self.stop_event.wait(
+                timeout=sleep_time
             )
 
     def stop(self) -> None:
+
         self.running = False
+        self.stop_event.set()
