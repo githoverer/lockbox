@@ -29,16 +29,19 @@ class LockboxDashboard:
         self.root = root
 
         self.root.title("Lockbox")
-        self.root.geometry("850x650")
+        self.root.geometry("850x700")
 
         self.storage = PolicyStorage(DATA_FILE)
         self.policies = self.storage.load()
 
-        # Temporary windows being added to the current policy.
         self.pending_windows = {
             day: []
             for day in DAYS
         }
+
+        # None = creating a new policy
+        # Integer = editing existing policy
+        self.editing_index = None
 
         self.build_ui()
         self.refresh_list()
@@ -118,7 +121,7 @@ class LockboxDashboard:
             padx=5,
         )
 
-        # Day selection
+        # Day
         tk.Label(
             form,
             text="Day",
@@ -139,7 +142,9 @@ class LockboxDashboard:
             self.selected_day,
             *DAYS,
         )
+
         day_menu.config(width=12)
+
         day_menu.grid(
             row=2,
             column=1,
@@ -164,6 +169,7 @@ class LockboxDashboard:
             form,
             width=12,
         )
+
         self.start_entry.grid(
             row=3,
             column=1,
@@ -188,6 +194,7 @@ class LockboxDashboard:
             form,
             width=12,
         )
+
         self.end_entry.grid(
             row=4,
             column=1,
@@ -220,7 +227,7 @@ class LockboxDashboard:
             sticky="w",
         )
 
-        # Pending windows
+        # Schedule heading
         tk.Label(
             self.root,
             text="Current Schedule",
@@ -228,6 +235,7 @@ class LockboxDashboard:
         ).pack(pady=(5, 5))
 
         schedule_frame = tk.Frame(self.root)
+
         schedule_frame.pack(
             fill="both",
             padx=30,
@@ -269,14 +277,27 @@ class LockboxDashboard:
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=10)
 
-        tk.Button(
+        self.save_button = tk.Button(
             button_frame,
             text="Save Policy",
             command=self.save_policy,
             width=16,
-        ).grid(
+        )
+
+        self.save_button.grid(
             row=0,
             column=0,
+            padx=5,
+        )
+
+        tk.Button(
+            button_frame,
+            text="Edit Selected",
+            command=self.edit_selected,
+            width=16,
+        ).grid(
+            row=0,
+            column=1,
             padx=5,
         )
 
@@ -287,7 +308,7 @@ class LockboxDashboard:
             width=16,
         ).grid(
             row=0,
-            column=1,
+            column=2,
             padx=5,
         )
 
@@ -298,11 +319,11 @@ class LockboxDashboard:
             width=16,
         ).grid(
             row=0,
-            column=2,
+            column=3,
             padx=5,
         )
 
-        # Existing applications
+        # Configured applications
         tk.Label(
             self.root,
             text="Configured Applications",
@@ -310,6 +331,7 @@ class LockboxDashboard:
         ).pack(pady=(10, 5))
 
         list_frame = tk.Frame(self.root)
+
         list_frame.pack(
             fill="both",
             expand=True,
@@ -343,6 +365,12 @@ class LockboxDashboard:
             yscrollcommand=scrollbar.set
         )
 
+        # Double-click = edit
+        self.policy_list.bind(
+            "<Double-Button-1>",
+            lambda event: self.edit_selected(),
+        )
+
     def browse_executable(self):
 
         path = filedialog.askopenfilename(
@@ -354,6 +382,7 @@ class LockboxDashboard:
         )
 
         if path:
+
             self.exe_entry.delete(
                 0,
                 tk.END,
@@ -498,6 +527,78 @@ class LockboxDashboard:
                     f"{start} → {end}",
                 )
 
+    def edit_selected(self):
+
+        selection = self.policy_list.curselection()
+
+        if not selection:
+
+            messagebox.showerror(
+                "Error",
+                "Select an application first.",
+            )
+
+            return
+
+        index = selection[0]
+
+        policy = self.policies[index]
+
+        # Remember which policy is being edited
+        self.editing_index = index
+
+        # Load name
+        self.name_entry.delete(
+            0,
+            tk.END,
+        )
+
+        self.name_entry.insert(
+            0,
+            policy.name,
+        )
+
+        # Load executable
+        self.exe_entry.delete(
+            0,
+            tk.END,
+        )
+
+        self.exe_entry.insert(
+            0,
+            policy.executable,
+        )
+
+        # Load existing schedule
+        self.pending_windows = {
+            day: []
+            for day in DAYS
+        }
+
+        for day, windows in policy.allowed_windows.items():
+
+            if day not in self.pending_windows:
+                continue
+
+            self.pending_windows[day] = [
+                TimeWindow(
+                    start=window.start,
+                    end=window.end,
+                )
+                for window in windows
+            ]
+
+        self.refresh_schedule_list()
+
+        # Change button text
+        self.save_button.config(
+            text="Save Changes"
+        )
+
+        self.root.title(
+            f"Lockbox - Editing {policy.name}"
+        )
+
     def save_policy(self):
 
         name = self.name_entry.get().strip()
@@ -546,6 +647,32 @@ class LockboxDashboard:
             },
         )
 
+        # EDIT EXISTING POLICY
+        if self.editing_index is not None:
+
+            old_policy = self.policies[
+                self.editing_index
+            ]
+
+            self.policies[
+                self.editing_index
+            ] = policy
+
+            self.storage.save(
+                self.policies
+            )
+
+            self.refresh_list()
+            self.clear_form()
+
+            messagebox.showinfo(
+                "Updated",
+                f"{old_policy.name} policy updated.",
+            )
+
+            return
+
+        # CREATE NEW POLICY
         self.policies.append(
             policy
         )
@@ -587,6 +714,8 @@ class LockboxDashboard:
 
         self.refresh_list()
 
+        self.clear_form()
+
         messagebox.showinfo(
             "Deleted",
             f"{deleted.name} policy deleted.",
@@ -622,6 +751,16 @@ class LockboxDashboard:
             day: []
             for day in DAYS
         }
+
+        self.editing_index = None
+
+        self.save_button.config(
+            text="Save Policy"
+        )
+
+        self.root.title(
+            "Lockbox"
+        )
 
         self.refresh_schedule_list()
 

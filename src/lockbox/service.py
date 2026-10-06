@@ -1,13 +1,11 @@
 import sys
 from pathlib import Path
 
-import win32serviceutil
-import win32service
 import win32event
+import win32service
+import win32serviceutil
 import servicemanager
 
-# Make the project root available when Windows loads this file
-# directly through pywin32.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 if str(PROJECT_ROOT) not in sys.path:
@@ -17,19 +15,6 @@ from src.lockbox.enforcer import LockboxEnforcer
 from src.lockbox.storage import PolicyStorage
 
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.lockbox.enforcer import LockboxEnforcer
-from src.lockbox.storage import PolicyStorage
-
-
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_FILE = PROJECT_ROOT / "data" / "policies.json"
 
 
@@ -38,7 +23,11 @@ class LockboxService(
 ):
 
     _svc_name_ = "LockboxService"
-    _svc_display_name_ = "Lockbox Application Enforcement"
+
+    _svc_display_name_ = (
+        "Lockbox Application Enforcement"
+    )
+
     _svc_description_ = (
         "Enforces Lockbox application access policies."
     )
@@ -71,12 +60,15 @@ class LockboxService(
 
     def SvcDoRun(self):
 
-        storage = PolicyStorage(DATA_FILE)
+        storage = PolicyStorage(
+            DATA_FILE
+        )
 
         policies = storage.load()
 
         self.enforcer = LockboxEnforcer(
-            policies
+            policies,
+            policy_provider=storage.load,
         )
 
         self.enforcer.run()
