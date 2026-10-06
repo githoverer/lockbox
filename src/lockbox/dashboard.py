@@ -1,15 +1,18 @@
 import tkinter as tk
 from datetime import datetime, time
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 
+from .auth import PasswordManager
 from .policy import ApplicationPolicy, TimeWindow
 from .scheduler import is_application_allowed
 from .storage import PolicyStorage
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 DATA_FILE = PROJECT_ROOT / "data" / "policies.json"
+AUTH_FILE = PROJECT_ROOT / "data" / "auth.json"
 
 DAYS = [
     "monday",
@@ -28,10 +31,23 @@ class LockboxDashboard:
 
         self.root = root
 
+        self.auth = PasswordManager(
+            AUTH_FILE
+        )
+
+        # Authenticate before loading the dashboard.
+        if not self.authenticate():
+
+            self.root.destroy()
+            return
+
         self.root.title("Lockbox")
         self.root.geometry("850x700")
 
-        self.storage = PolicyStorage(DATA_FILE)
+        self.storage = PolicyStorage(
+            DATA_FILE
+        )
+
         self.policies = self.storage.load()
 
         self.pending_windows = {
@@ -39,12 +55,102 @@ class LockboxDashboard:
             for day in DAYS
         }
 
-        # None = creating a new policy
-        # Integer = editing existing policy
         self.editing_index = None
 
         self.build_ui()
         self.refresh_list()
+
+    def authenticate(self):
+
+        # First launch: create password.
+        if not self.auth.is_configured():
+
+            return self.create_password()
+
+        # Existing installation: ask for password.
+        return self.login()
+
+    def create_password(self):
+
+        while True:
+
+            password = simpledialog.askstring(
+                "Lockbox Setup",
+                "Create an administrator password:",
+                show="*",
+                parent=self.root,
+            )
+
+            if password is None:
+                return False
+
+            if len(password) < 6:
+
+                messagebox.showerror(
+                    "Password Error",
+                    "Password must contain at least 6 characters.",
+                    parent=self.root,
+                )
+
+                continue
+
+            confirm = simpledialog.askstring(
+                "Lockbox Setup",
+                "Confirm your password:",
+                show="*",
+                parent=self.root,
+            )
+
+            if confirm is None:
+                return False
+
+            if password != confirm:
+
+                messagebox.showerror(
+                    "Password Error",
+                    "Passwords do not match.",
+                    parent=self.root,
+                )
+
+                continue
+
+            self.auth.set_password(
+                password
+            )
+
+            messagebox.showinfo(
+                "Lockbox",
+                "Administrator password created.",
+                parent=self.root,
+            )
+
+            return True
+
+    def login(self):
+
+        while True:
+
+            password = simpledialog.askstring(
+                "Lockbox",
+                "Enter administrator password:",
+                show="*",
+                parent=self.root,
+            )
+
+            if password is None:
+                return False
+
+            if self.auth.verify_password(
+                password
+            ):
+
+                return True
+
+            messagebox.showerror(
+                "Access Denied",
+                "Incorrect password.",
+                parent=self.root,
+            )
 
     def build_ui(self):
 
@@ -65,7 +171,6 @@ class LockboxDashboard:
         form = tk.Frame(self.root)
         form.pack(pady=15)
 
-        # Application name
         tk.Label(
             form,
             text="Application Name",
@@ -88,7 +193,6 @@ class LockboxDashboard:
             pady=5,
         )
 
-        # Executable
         tk.Label(
             form,
             text="Executable",
@@ -121,7 +225,6 @@ class LockboxDashboard:
             padx=5,
         )
 
-        # Day
         tk.Label(
             form,
             text="Day",
@@ -153,7 +256,6 @@ class LockboxDashboard:
             sticky="w",
         )
 
-        # Start time
         tk.Label(
             form,
             text="Start Time",
@@ -178,7 +280,6 @@ class LockboxDashboard:
             sticky="w",
         )
 
-        # End time
         tk.Label(
             form,
             text="End Time",
@@ -214,7 +315,6 @@ class LockboxDashboard:
             sticky="w",
         )
 
-        # Add window
         tk.Button(
             form,
             text="Add Time Window",
@@ -227,7 +327,6 @@ class LockboxDashboard:
             sticky="w",
         )
 
-        # Schedule heading
         tk.Label(
             self.root,
             text="Current Schedule",
@@ -273,7 +372,6 @@ class LockboxDashboard:
             command=self.remove_time_window,
         ).pack(pady=5)
 
-        # Main buttons
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=10)
 
@@ -323,7 +421,6 @@ class LockboxDashboard:
             padx=5,
         )
 
-        # Configured applications
         tk.Label(
             self.root,
             text="Configured Applications",
@@ -365,7 +462,6 @@ class LockboxDashboard:
             yscrollcommand=scrollbar.set
         )
 
-        # Double-click = edit
         self.policy_list.bind(
             "<Double-Button-1>",
             lambda event: self.edit_selected(),
@@ -544,10 +640,8 @@ class LockboxDashboard:
 
         policy = self.policies[index]
 
-        # Remember which policy is being edited
         self.editing_index = index
 
-        # Load name
         self.name_entry.delete(
             0,
             tk.END,
@@ -558,7 +652,6 @@ class LockboxDashboard:
             policy.name,
         )
 
-        # Load executable
         self.exe_entry.delete(
             0,
             tk.END,
@@ -569,7 +662,6 @@ class LockboxDashboard:
             policy.executable,
         )
 
-        # Load existing schedule
         self.pending_windows = {
             day: []
             for day in DAYS
@@ -590,7 +682,6 @@ class LockboxDashboard:
 
         self.refresh_schedule_list()
 
-        # Change button text
         self.save_button.config(
             text="Save Changes"
         )
@@ -647,7 +738,6 @@ class LockboxDashboard:
             },
         )
 
-        # EDIT EXISTING POLICY
         if self.editing_index is not None:
 
             old_policy = self.policies[
@@ -672,7 +762,6 @@ class LockboxDashboard:
 
             return
 
-        # CREATE NEW POLICY
         self.policies.append(
             policy
         )
@@ -799,6 +888,12 @@ def main():
     root = tk.Tk()
 
     LockboxDashboard(root)
+
+
+    # If authentication failed or was cancelled,
+    # the window has already been destroyed.
+    if not root.winfo_exists():
+        return
 
     root.mainloop()
 
